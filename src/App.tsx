@@ -5,7 +5,6 @@ import CssBaseline from '@mui/material/CssBaseline';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import UrlsList from './pages/UrlsList';
-import UserProfile from './pages/Profile';
 import Layout from './components/Layout';
 import Profile from './pages/Profile';
 
