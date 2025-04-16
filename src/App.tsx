@@ -5,6 +5,9 @@ import CssBaseline from '@mui/material/CssBaseline';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import UrlsList from './pages/UrlsList';
+import UserProfile from './pages/Profile';
+import Layout from './components/Layout';
+import Profile from './pages/Profile';
 
 const theme = createTheme({
   palette: {
@@ -20,7 +23,7 @@ const theme = createTheme({
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const token = localStorage.getItem('token');
-  return token ? <>{children}</> : <Navigate to="/" />;
+  return token ? <Layout>{children}</Layout> : <Navigate to="/" />;
 };
 
 function App() {
@@ -43,6 +46,14 @@ function App() {
             element={
               <PrivateRoute>
                 <UrlsList />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <PrivateRoute>
+                <Profile />
               </PrivateRoute>
             }
           />

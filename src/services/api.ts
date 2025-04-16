@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { User } from '../types';
+import { User, Url } from '../types';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8086/api/v1';
 
@@ -21,6 +21,11 @@ api.interceptors.request.use((config) => {
 
 export const login = async (userData: User) => {
     const response = await api.post('/users/login', userData);
+    return response.data;
+};
+
+export const getProfile = async () => {
+    const response = await api.get('/users/me');
     return response.data;
 };
 

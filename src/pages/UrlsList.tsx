@@ -67,8 +67,8 @@ const UrlsList: React.FC = () => {
     }
   };
 
-  const handleCopyToClipboard = (shortCode: string) => {
-    navigator.clipboard.writeText(`${window.location.origin}/${shortCode}`);
+  const handleCopyToClipboard = (shortUrl: string) => {
+    navigator.clipboard.writeText(`${shortUrl}`);
   };
 
   return (
@@ -101,7 +101,7 @@ const UrlsList: React.FC = () => {
             <TableHead>
               <TableRow>
                 <TableCell>Long URL</TableCell>
-                <TableCell>Short Code</TableCell>
+                <TableCell>Short URL</TableCell>
                 <TableCell>Created At</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>

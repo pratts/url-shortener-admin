@@ -3,6 +3,13 @@ export interface User {
     password: string;
 }
 
+export interface UserProfile {
+    id: number;
+    email: string;
+    verified: boolean;
+    name: string;
+}
+
 export interface Url {
     id: string;
     url: string;
