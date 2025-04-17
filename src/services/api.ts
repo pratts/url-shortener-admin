@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { User } from '../types';
+import SHA256 from 'crypto-js/sha256';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8086/api/v1';
 
@@ -20,7 +21,12 @@ api.interceptors.request.use((config) => {
 });
 
 export const login = async (userData: User) => {
-    const response = await api.post('/users/login', userData);
+    // Hash the password before sending
+    const hashedPassword = SHA256(userData.password).toString();
+    const response = await api.post('/users/login', {
+        ...userData,
+        password: hashedPassword
+    });
     return response.data;
 };
 
