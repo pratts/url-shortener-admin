@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  url-shortener-admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8086/api/v1}
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8086/api/v1}
+    restart: unless-stopped
