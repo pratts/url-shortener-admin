@@ -121,7 +121,7 @@ const UrlsList: React.FC = () => {
                     >
                       <ContentCopyIcon />
                     </IconButton>
-                    <IconButton
+                    {/* <IconButton
                       onClick={() => {
                         setEditingUrl(url);
                         setEditUrl(url.url);
@@ -130,7 +130,7 @@ const UrlsList: React.FC = () => {
                       title="Edit URL"
                     >
                       <EditIcon />
-                    </IconButton>
+                    </IconButton> */}
                   </TableCell>
                 </TableRow>
               ))}
