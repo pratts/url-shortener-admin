@@ -10,6 +10,12 @@ type Options<T extends FieldValues> = {
   labels?: Record<string, string>
 }
 
+// PATCH /users/me with neither field reports {"name": "or password is required"},
+// which reads as "name or password is required" and belongs to the whole form.
+function isFormLevel(key: string, message: string) {
+  return key === "name" && message === "or password is required"
+}
+
 function sentence(label: string, message: string) {
   return `${label} ${message}`
 }
@@ -32,7 +38,9 @@ export function applyApiError<T extends FieldValues>(
   if (error.fields) {
     for (const [key, message] of Object.entries(error.fields)) {
       const label = fields[key as Path<T>]
-      if (label !== undefined) {
+      if (isFormLevel(key, message)) {
+        formMessages.push(sentence("Name", message))
+      } else if (label !== undefined) {
         setError(key as Path<T>, { message: sentence(label, message) }, { shouldFocus: true })
       } else {
         const otherLabel = labels[key] ?? key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " ")
