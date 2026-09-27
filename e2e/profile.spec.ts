@@ -27,7 +27,7 @@ test("change the password; a wrong current password shows on its field", async (
 
   const current = page.getByLabel("Current password")
   await current.fill("definitely-not-the-password")
-  await page.getByLabel("New password").fill(newPassword)
+  await page.getByLabel("New password", { exact: true }).fill(newPassword)
   await page.getByLabel("Confirm new password").fill(newPassword)
   const rejected = page.waitForResponse((r) => r.url().endsWith("/users/me") && r.request().method() === "PATCH")
   await page.getByRole("button", { name: "Change password" }).click()
