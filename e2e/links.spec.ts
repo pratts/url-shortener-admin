@@ -114,9 +114,11 @@ test("open launches a new tab at the short URL, which lands on the target", asyn
   const [link] = await api.links()
   await loginWithToken(page, api)
 
-  const opened: string[] = []
+  // Navigations after this point: the panel's page stays put, so these are the
+  // new tab's. (A popup's first request has no frame yet, so don't ask for it.)
+  const navigations: string[] = []
   context.on("request", (r) => {
-    if (r.isNavigationRequest() && r.frame().page() !== page) opened.push(r.url())
+    if (r.isNavigationRequest()) navigations.push(r.url())
   })
   const open = page.getByRole("link", { name: `Open ${link.short_url}` })
   await expect(open).toHaveAttribute("target", "_blank")
@@ -126,7 +128,10 @@ test("open launches a new tab at the short URL, which lands on the target", asyn
   await open.click()
   const popup = await popupPromise
   await popup.waitForURL(link.url)
-  expect(opened[0], "the tab first loads the short URL").toBe(link.short_url)
+  expect(navigations, "the tab loads the short URL, which redirects to the target").toEqual([
+    link.short_url,
+    link.url,
+  ])
   expect(popup.url()).toBe(link.url)
   await expect(page).toHaveURL(/\/urls$/) // the panel stays where it was
   await popup.close()
