@@ -9,29 +9,69 @@ schemas in [`docs/openapi.json`](docs/openapi.json). Read `docs/API.md` before
 touching anything that calls the API; never guess endpoints, fields or status
 codes.
 
-## Current state and the rewrite
+## How the app is built
 
-The existing code is a Create React App project (react-scripts, MUI, Axios,
-crypto-js) deployed on Railway via Docker and Caddy. It is being **rewritten in
-place** on the stack below. Treat the old code as a reference for features only.
+A Vite + React single-page app, served by Vercel as static files. The old
+Create React App / MUI / Axios code was rewritten in place (PR #1) and is gone;
+git history has it if you ever need it.
 
-Problems in the old code that must not carry over:
-- **It SHA-256-hashes the password in the browser before sending it**
-  (`src/services/api.ts`). Remove it. Passwords go to the API exactly as typed,
-  over HTTPS; the backend hashes them with bcrypt.
-- It keeps the token in `localStorage`; use `sessionStorage` (see Auth).
-- It types URL IDs as `string`; they are numbers.
-- It uses outdated endpoint shapes (e.g. `GET /urls` returning an array). The
-  API returns `{items, next_cursor}` now.
-- URL editing was disabled; the API supports it (`PUT /urls/{id}`), so bring it
-  back.
+- **Startup** (`main.tsx`): creates the TanStack Query client and the router,
+  connects session handling to both (`app.ts`), and renders `Providers`
+  (query client, theme, toasts) around `RouterProvider`.
+- **Routing** (`routes.tsx`): `createBrowserRouter` in library mode. Guards are
+  route loaders: private routes redirect to `/login?next=…` without a token,
+  and `/login` redirects away when logged in. Every page and the private layout
+  are lazy-loaded chunks, so the main chunk holds only the runtime.
+- **API** (`api/`): `client.ts` wraps `fetch` (base URL, token header, JSON,
+  `ApiError`, 204s, the 401 hook); `auth.ts`, `users.ts` and `urls.ts` are thin
+  typed endpoint functions over the generated `types/api.ts`.
+- **Session** (`lib/auth.ts`, `lib/session.ts`): the token lives in
+  `sessionStorage` behind `lib/auth.ts`. `endSession()` clears it, leaves the
+  private pages and drops the query cache; it runs on logout, when the JWT
+  `exp` passes (a timer in the private layout), and on any 401 from an
+  authenticated request, including one sent after the token vanished from
+  storage.
+- **Data** (`hooks/`): TanStack Query hooks. Links use `useInfiniteQuery`;
+  mutations restart the list from the first page. Profile updates write the
+  response into the cached `/users/me`.
+- **Forms**: React Hook Form + Zod schemas from `lib/validation.ts`; server
+  errors are mapped onto fields or the form by `lib/forms.ts`.
+- **Theme**: `components/theme-provider.tsx` plus `public/theme-init.js`, which
+  applies the saved or system theme before React renders.
 
-Remove when the rewrite is done: `react-scripts` and CRA files (`public/index.html`,
-`src/react-app-env.d.ts`, `reportWebVitals`, `setupTests`, `App.test.tsx`,
-`logo.svg`), `@mui/*`, `@emotion/*`, `axios`, `crypto-js`, and the Railway/Docker
-setup (`Dockerfile`, `Dockerfile.railway`, `Caddyfile`, `docker-compose.yml`,
-`.dockerignore`), which Vercel replaces. Also remove `README.old.md`, and rewrite
-`README.md` for the new setup.
+## Deliberate deviations
+
+Places where the code differs from what this file or the tools' defaults would
+suggest, on purpose:
+
+- **TypeScript 5.9, not 6.x.** `openapi-typescript` (which generates
+  `src/types/api.ts`) only supports TypeScript 5.
+- **A small theme provider and `public/theme-init.js` instead of
+  `next-themes`.** shadcn's `sonner` component uses `next-themes`, which injects
+  an inline `<script>`; the CSP (`script-src 'self'`) blocks it. The external
+  init script avoids a flash of the wrong theme without `'unsafe-inline'`.
+- **React Router 8 in library mode.** It is the current major version and still
+  offers `createBrowserRouter` + `RouterProvider` without the framework.
+- **`npm run typecheck` is `tsc -b --noEmit`.** The root `tsconfig.json` only
+  references `tsconfig.app.json`, `tsconfig.node.json` and `tsconfig.e2e.json`;
+  plain `tsc --noEmit` checks no files at all.
+- **`npm run build` fails without `VITE_API_BASE_URL`.** The API client throws
+  at startup when it is missing; at build time the bundler treated that throw as
+  unconditional and dropped the rest of the app, so a build without the
+  variable "succeeded" but could only throw. `vite.config.ts` stops the build
+  instead.
+- **zod runs in jitless mode** (`z.config({ jitless: true })` in
+  `lib/validation.ts`). zod v4 otherwise calls `Function("")` to decide whether
+  it may compile validators, which the CSP reports as a `script-src` violation.
+  Jitless mode never calls it, so the CSP needs no `'unsafe-eval'`.
+- **The target-URL rule compares hostnames, not host and port.** The backend
+  rejects any target on the short-link hostname whatever the port (with short
+  links on `localhost:8085`, every `localhost` target is refused), so the
+  client does the same.
+- **Extra `lib/` files beyond the layout below:** `session.ts` (ending a session
+  needs the router and query cache, registered at startup, which avoids import
+  cycles), `forms.ts` (one place that maps `ApiError` fields onto React Hook
+  Form), and `query-client.ts` (retry rules: only network errors and 5xx).
 
 ## Stack (decided; don't substitute alternatives)
 
@@ -63,11 +103,15 @@ src/
 │   ├── url-form-dialog.tsx
 │   └── qr-code-dialog.tsx
 ├── hooks/          # use-auth.ts, use-urls.ts (TanStack Query hooks)
-├── lib/            # auth.ts (token storage), utils.ts, validation.ts (Zod schemas)
-├── pages/          # Login.tsx, Register.tsx, Urls.tsx, Profile.tsx, NotFound.tsx
-├── routes.tsx      # router definition and the auth guard
+├── lib/            # auth.ts (token storage), session.ts, forms.ts, query-client.ts,
+│                   # utils.ts, validation.ts (Zod schemas)
+├── pages/          # Login.tsx, Register.tsx, Urls.tsx, Profile.tsx, NotFound.tsx (+ tests)
+├── test/           # MSW server, fixtures, render-app.tsx harness
+├── routes.tsx      # router definition and the auth guards
+├── app.ts          # wires session handling to the router and query client
 ├── types/api.ts    # GENERATED; don't edit
 └── main.tsx
+e2e/                # Playwright tests against a live backend (not in CI)
 docs/               # API.md, openapi.json
 scripts/            # fix-openapi.mjs
 ```
@@ -96,7 +140,8 @@ the user's name/email.
   `ApiError { status: number; message: string; fields?: Record<string, string> }`,
   from the body `{ error, fields? }` (see `docs/API.md`, "Errors").
 - 204 responses have no body; don't parse them.
-- **401 on any authenticated request:** clear the token, clear the query cache,
+- **401 on any authenticated request** (everything except login and register,
+  even if no token was left to send): clear the token, clear the query cache,
   redirect to `/login?next=<current path>`. On `POST /users/login`, a 401 is just
   "Invalid email or password".
 - 429: show "Too many attempts, try again later". Response headers such as
@@ -134,7 +179,7 @@ before submitting, and still map server `fields` errors onto inputs with
 - **email:** a valid address, at most 254 characters (trim before sending).
 - **name:** 1–100 characters after trimming.
 - **password:** 8–72 **bytes**. Check with `new TextEncoder().encode(pw).length`, not `.length`.
-- **target URL:** an absolute `http`/`https` URL with a host (use `new URL()`), no username/password, at most 2048 characters, and not on the short-link host (compare the host from any `short_url`, or `VITE_SHORT_URL_HOST`).
+- **target URL:** an absolute `http`/`https` URL with a host (use `new URL()`), no username/password, at most 2048 characters, and not on the short-link hostname (from any `short_url`, or `VITE_SHORT_URL_HOST`). Compare **hostnames, ignoring ports**, as the backend does.
 - Map server errors: 409 on register goes to `email`; 403 on password change goes to `current_password`; the `name: "or password is required"` message becomes a form-level error.
 
 ## UI details
@@ -157,7 +202,7 @@ before submitting, and still map server `fields` errors onto inputs with
   img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.tidylnk.com;
   frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
   ```
-  (`style-src 'unsafe-inline'` is needed for the inline style attributes Radix uses for positioning.) Also set `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: camera=(), microphone=(), geolocation=()`.
+  (`style-src 'unsafe-inline'` is needed for the inline style attributes Radix uses for positioning, and for the styles sonner injects.) Keep scripts external: the theme is applied by `public/theme-init.js`, and zod runs jitless (see "Deliberate deviations"). `npm run e2e:prod` fails on any CSP violation. Also set `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: camera=(), microphone=(), geolocation=()`.
 - No analytics or third-party scripts.
 
 ## Configuration
@@ -178,8 +223,10 @@ production).
 npm run dev          # Vite dev server on http://localhost:5173
 npm run build        # tsc -b && vite build
 npm run lint         # eslint
-npm run typecheck    # tsc --noEmit
-npm test             # vitest run
+npm run typecheck    # tsc -b --noEmit (see "Deliberate deviations")
+npm test             # vitest run (unit and component tests, src/ only)
+npm run e2e          # Playwright against the dev server and a live backend
+npm run e2e:prod     # Playwright against the production build, with the CSP
 npm run gen:api      # openapi-typescript docs/openapi.json -o src/types/api.ts
 ```
 Commit `src/types/api.ts`. After the backend API changes, follow "Updating
@@ -201,7 +248,36 @@ origin; otherwise previews can't call it.
   - register: field errors and 409
   - links: list, "Load more" across two pages, create, edit, delete with confirmation, and a 429 on create
   - profile: 403 on a wrong current password
-- Add a GitHub Actions workflow running lint, typecheck, tests and build on every PR.
+- The GitHub Actions workflow runs lint, typecheck, unit tests and build on every PR, and fails if `src/types/api.ts` is stale.
+
+### End-to-end tests (`e2e/`)
+
+Playwright against the **real backend**, no mocks. Not in CI (it needs a live
+backend); run it locally before merging changes to API calls, auth, or the CSP.
+
+1. Start the backend (admin API `:8086`, redirect `:8085`) with
+   `CORS_ORIGINS=http://localhost:5173,http://localhost:4173`.
+2. `npx playwright install chromium` (once).
+3. `cp .env.example .env` (gitignored; never commit it), then `npm run dev`, and
+   `npm run e2e` in another shell. `E2E_BASE_URL` and `E2E_API_URL` override
+   the defaults.
+4. `npm run e2e:prod` builds against the local API, serves `dist/` on `:4173`
+   with the headers from `vercel.json` (only `connect-src` is pointed at the
+   local API), and runs the same suite, failing on any CSP violation.
+
+Every test fails on console errors, CORS errors, failed requests and 4xx/5xx
+responses it doesn't declare with `guard.allow(status, url)`.
+
+**Rate limits.** The API allows **5 registrations per hour per IP, and every
+attempt counts**: 201, 400 and 409 alike, including requests from scripts or
+manual testing. Logins allow 20 attempts per 15 minutes per IP. The suite
+records every register and login attempt in `e2e/.state/state.json`
+(gitignored), keeps one attempt spare, skips tests that would exceed a limit,
+and stops at the first 429. It registers a user only if it has none (or with
+`E2E_NEW_USER=1`) and reuses it and its token afterwards. Never clear Redis to
+get around a limit; wait for the window to pass. Delete test users afterwards
+with `DELETE FROM users WHERE email LIKE 'e2e-%@example.com';` (links and
+clicks cascade).
 
 ## Out of scope for now
 
@@ -212,8 +288,12 @@ filters, total counts.
 
 ## Working agreements
 
-- Keep changes small and in focused commits; one feature per PR.
+- Keep changes small and in focused commits.
+- **One feature per PR, from now on.** The rewrite landed as a single PR (#1)
+  because its commits depended on each other; that was the exception.
 - Before calling something done, run `npm run lint`, `npm run typecheck`,
-  `npm test` and `npm run build`, and report the results honestly.
+  `npm test` and `npm run build`, and report the results honestly. For changes
+  to API calls, auth or the CSP, also run `npm run e2e` and `npm run e2e:prod`
+  against a local backend.
 - If `docs/API.md` and the backend's real behaviour disagree, stop and say so;
   don't work around it silently.
