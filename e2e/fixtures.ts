@@ -49,8 +49,16 @@ export const test = base.extend<{ guard: Guard; api: Api }>({
         page.on("pageerror", (error) => problems.push(`page error: ${error.message}`))
         page.on("requestfailed", (request) => {
           const failure = request.failure()?.errorText ?? "unknown"
-          // Downloads of blob:/data: URLs end as aborted navigations.
-          if (failure === "net::ERR_ABORTED" && /^(blob|data):/.test(request.url())) return
+          if (failure === "net::ERR_ABORTED") {
+            // Downloads of blob:/data: URLs end as aborted navigations.
+            if (/^(blob|data):/.test(request.url())) return
+            // A cancelled read, not a failure: TanStack Query aborts a query's
+            // fetch when its component unmounts (in development, React
+            // StrictMode mounts twice, so the first fetch is always cancelled).
+            // CORS and network failures are net::ERR_FAILED and still count,
+            // as does any aborted write.
+            if (request.method() === "GET") return
+          }
           problems.push(`request failed: ${request.method()} ${request.url()} (${failure})`)
         })
         page.on("response", (response) => {
