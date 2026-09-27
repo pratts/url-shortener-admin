@@ -164,13 +164,14 @@ export class Api {
 
 /**
  * A target URL that points back at the panel, so opening a short link never
- * reaches an outside site (the SPA answers any path). It uses 127.0.0.1: the
- * backend rejects every target on the short-link hostname, localhost, whatever
- * the port.
+ * reaches an outside site (the SPA answers any path). The backend rejects
+ * every target on the short-link hostname, localhost, whatever the port, so
+ * the target uses the loopback address the app answers on (found by global
+ * setup: Vite may listen on [::1] only, a Node server on both).
  */
 export function targetUrl(baseURL: string, name: string | number) {
   const url = new URL(`/e2e-target/${name}`, baseURL)
-  if (url.hostname === "localhost") url.hostname = "127.0.0.1"
+  if (url.hostname === "localhost") url.hostname = process.env.E2E_LOOPBACK_HOST ?? "127.0.0.1"
   return url.href
 }
 

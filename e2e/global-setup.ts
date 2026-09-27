@@ -20,6 +20,26 @@ export default async function globalSetup(config: FullConfig) {
   }
 
   await check("The app", baseURL)
+
+  // Link targets can't use "localhost" (the short-link hostname), so they use
+  // a loopback address; find one the app answers on.
+  if (new URL(baseURL).hostname === "localhost") {
+    let loopback: string | undefined
+    for (const host of ["127.0.0.1", "[::1]"]) {
+      const url = new URL(baseURL)
+      url.hostname = host
+      const ok = await fetch(url, { signal: AbortSignal.timeout(2_000) }).then(
+        (r) => r.ok,
+        () => false
+      )
+      if (ok) {
+        loopback = host
+        break
+      }
+    }
+    if (!loopback) throw new Error(`The app at ${baseURL} answers on neither 127.0.0.1 nor [::1].`)
+    process.env.E2E_LOOPBACK_HOST = loopback // inherited by the test workers
+  }
   const health = await check("The admin API", new URL("/readyz", API_URL).toString())
   if (!health.ok) throw new Error(`The admin API is not ready (${health.status} from /readyz).`)
 
