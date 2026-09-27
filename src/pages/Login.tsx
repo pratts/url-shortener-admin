@@ -1,94 +1,83 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  Container,
-  Paper,
-  TextField,
-  Button,
-  Typography,
-  Box,
-} from '@mui/material';
-import { login } from '../services/api';
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import { Link, useNavigate, useSearchParams } from "react-router"
+import type { z } from "zod"
+import { ApiError } from "@/api/client"
+import { AuthLayout } from "@/components/auth-layout"
+import { FormError } from "@/components/form-error"
+import { Button } from "@/components/ui/button"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/ui/spinner"
+import { useLogin } from "@/hooks/use-auth"
+import { applyApiError, FORM_ERROR } from "@/lib/forms"
+import { safeNextPath } from "@/lib/session"
+import { loginSchema } from "@/lib/validation"
 
-const Login: React.FC = () => {
-  const navigate = useNavigate();
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
-  const [error, setError] = useState('');
+type LoginValues = z.input<typeof loginSchema>
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
+export default function Login() {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const loginMutation = useLogin()
+  const form = useForm<LoginValues, unknown, z.output<typeof loginSchema>>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
+  })
+  const { errors, isSubmitting } = form.formState
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const response = await login(formData);
-      localStorage.setItem('token', response.token);
-      navigate('/dashboard');
-    } catch (err) {
-      setError('Invalid email or password');
+      await loginMutation.mutateAsync(values)
+      navigate(safeNextPath(searchParams.get("next")), { replace: true })
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        form.setError(FORM_ERROR, { message: "Invalid email or password" })
+        return
+      }
+      applyApiError(form.setError, error, { fields: { email: "Email", password: "Password" } })
     }
-  };
+  })
 
   return (
-    <Container maxWidth="sm">
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Typography variant="h4" component="h1" gutterBottom align="center">
-            Login
-          </Typography>
-          <form onSubmit={handleSubmit}>
-            <TextField
-              fullWidth
-              label="Email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              margin="normal"
-              required
+    <AuthLayout title="Log in to your account" description="Enter your email and password to manage your links.">
+      <form onSubmit={onSubmit} noValidate>
+        <FieldGroup>
+          <FormError message={errors.root?.server?.message} />
+          <Field data-invalid={!!errors.email}>
+            <FieldLabel htmlFor="email">Email</FieldLabel>
+            <Input
+              id="email"
+              type="email"
+              autoComplete="username"
+              placeholder="you@example.com"
+              aria-invalid={!!errors.email}
+              {...form.register("email")}
             />
-            <TextField
-              fullWidth
-              label="Password"
-              name="password"
+            <FieldError errors={[errors.email]} />
+          </Field>
+          <Field data-invalid={!!errors.password}>
+            <FieldLabel htmlFor="password">Password</FieldLabel>
+            <Input
+              id="password"
               type="password"
-              value={formData.password}
-              onChange={handleChange}
-              margin="normal"
-              required
+              autoComplete="current-password"
+              aria-invalid={!!errors.password}
+              {...form.register("password")}
             />
-            {error && (
-              <Typography color="error" sx={{ mt: 2 }}>
-                {error}
-              </Typography>
-            )}
-            <Button
-              type="submit"
-              variant="contained"
-              color="primary"
-              fullWidth
-              sx={{ mt: 3 }}
-            >
-              Login
+            <FieldError errors={[errors.password]} />
+          </Field>
+          <Field>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting && <Spinner />}
+              Log in
             </Button>
-          </form>
-        </Paper>
-      </Box>
-    </Container>
-  );
-};
-
-export default Login; 
+            <FieldDescription className="text-center">
+              Don&apos;t have an account? <Link to="/register">Sign up</Link>
+            </FieldDescription>
+          </Field>
+        </FieldGroup>
+      </form>
+    </AuthLayout>
+  )
+}

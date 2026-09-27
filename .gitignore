@@ -424,3 +424,14 @@ yarn-error.log*
 
 # Environment variables
 .env
+
+# Vite / Vercel
+/dist
+.vercel
+*.tsbuildinfo
+
+# Playwright
+/test-results
+/playwright-report
+/blob-report
+/e2e/.state
