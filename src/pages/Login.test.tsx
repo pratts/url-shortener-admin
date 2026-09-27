@@ -117,6 +117,26 @@ describe("session", () => {
     expect(await screen.findByLabelText("Email")).toBeInTheDocument()
   })
 
+  it("redirects to /login with next when the token disappears mid-session", async () => {
+    setToken(makeToken())
+    server.use(
+      http.get(`${API}/users/me`, () => HttpResponse.json(alice)),
+      http.get(`${API}/urls`, emptyPage),
+      http.post(`${API}/urls`, ({ request }) =>
+        request.headers.get("authorization")
+          ? HttpResponse.json({ error: "unexpected" }, { status: 500 })
+          : HttpResponse.json({ error: "Authorization header is missing" }, { status: 401 })
+      )
+    )
+    const { user, location } = renderApp("/urls")
+    await user.click(await screen.findByRole("button", { name: "Create your first link" }))
+    sessionStorage.clear()
+    await user.type(await screen.findByLabelText("Target URL"), "https://example.com/x")
+    await user.click(screen.getByRole("button", { name: "Create" }))
+
+    await waitFor(() => expect(location()).toBe("/login?next=%2Furls"))
+  })
+
   it("redirects to /login when there is no token", async () => {
     const { location } = renderApp("/urls")
     await waitFor(() => expect(location()).toBe("/login?next=%2Furls"))

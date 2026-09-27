@@ -120,7 +120,7 @@ describe("request", () => {
     await expect(request("GET", "/urls")).rejects.toMatchObject({ status: 0, message: NETWORK_ERROR })
   })
 
-  it("calls the unauthorized handler on 401 only when a token was sent", async () => {
+  it("calls the unauthorized handler on 401 for authenticated requests only", async () => {
     const handler = vi.fn()
     setUnauthorizedHandler(handler)
     server.use(
@@ -139,6 +139,11 @@ describe("request", () => {
     setToken(makeToken())
     await expect(request("GET", "/users/me")).rejects.toMatchObject({ status: 401 })
     expect(handler).toHaveBeenCalledTimes(1)
+
+    // The token vanished from storage mid-session: the request goes out without one.
+    sessionStorage.clear()
+    await expect(request("GET", "/users/me")).rejects.toMatchObject({ status: 401 })
+    expect(handler).toHaveBeenCalledTimes(2)
     setUnauthorizedHandler(undefined)
   })
 })

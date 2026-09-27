@@ -56,7 +56,10 @@ export function parseApiError(status: number, body: unknown): ApiError {
 
 let unauthorizedHandler: (() => void) | undefined
 
-/** Called when an authenticated request gets a 401 (expired or revoked token). */
+/**
+ * Called when an authenticated request gets a 401: the token expired, was
+ * revoked, or is gone from storage (then the request went out without one).
+ */
 export function setUnauthorizedHandler(handler: (() => void) | undefined) {
   unauthorizedHandler = handler
 }
@@ -114,6 +117,6 @@ export async function request<T>(
     errorBody = undefined
   }
 
-  if (response.status === 401 && token) unauthorizedHandler?.()
+  if (response.status === 401 && auth) unauthorizedHandler?.()
   throw parseApiError(response.status, errorBody)
 }
