@@ -1,20 +1,15 @@
 import { expect, loginWithForm, loginWithToken, test } from "./fixtures.ts"
-import { attemptsLeft, currentUser, MAX_USERS, readState, spendAttempt, updateState } from "./state.ts"
+import { acquire, currentUser, readState, updateState } from "./state.ts"
 
 test.describe.configure({ mode: "serial" })
 
 test("register lands logged in", async ({ page }) => {
   const { users } = readState()
-  test.skip(users.length >= MAX_USERS, `The suite already created ${MAX_USERS} users; reusing ${users.at(-1)?.email}.`)
-  // Registrations are scarce (5 per hour per IP), so once a user exists a new
-  // one is only made on request.
+  // Registrations are scarce (5 per hour per IP, every attempt counts), so once
+  // a user exists a new one is only made on request.
   test.skip(
     users.length > 0 && process.env.E2E_NEW_USER !== "1",
     `Reusing ${users.at(-1)?.email}; set E2E_NEW_USER=1 to register another.`
-  )
-  test.skip(
-    attemptsLeft("register") < 1 || attemptsLeft("login") < 1,
-    "No registration or login attempts left in the rate-limit window."
   )
 
   const stamp = Date.now()
@@ -26,8 +21,8 @@ test("register lands logged in", async ({ page }) => {
   await page.getByLabel("Password", { exact: true }).fill(user.password)
   await page.getByLabel("Confirm password").fill(user.password)
 
-  spendAttempt("register")
-  spendAttempt("login") // registering logs in with the same credentials
+  await acquire("register")
+  await acquire("login") // registering logs in with the same credentials
   const registered = page.waitForResponse((r) => r.url().endsWith("/users/register"))
   await page.getByRole("button", { name: "Create account" }).click()
   expect((await registered).status()).toBe(201)
@@ -87,7 +82,6 @@ test("register shows field errors before submitting", async ({ page }) => {
 })
 
 test("register with an existing email shows 409 on the email field", async ({ page, guard }) => {
-  test.skip(attemptsLeft("register") < 1, "No registration attempts left in the rate-limit window.")
   const user = currentUser()
   guard.allow(409, "/users/register")
 
@@ -96,7 +90,7 @@ test("register with an existing email shows 409 on the email field", async ({ pa
   await page.getByLabel("Name").fill("Someone Else")
   await page.getByLabel("Password", { exact: true }).fill("another-password")
   await page.getByLabel("Confirm password").fill("another-password")
-  spendAttempt("register")
+  await acquire("register") // a 409 counts against the limit too
   const response = page.waitForResponse((r) => r.url().endsWith("/users/register"))
   await page.getByRole("button", { name: "Create account" }).click()
   expect((await response).status()).toBe(409)

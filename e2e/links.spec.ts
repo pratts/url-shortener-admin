@@ -1,10 +1,15 @@
 import { readFileSync } from "node:fs"
 import type { Page } from "@playwright/test"
 import { Api, expect, loginWithToken, targetUrl, test } from "./fixtures.ts"
+import { acquire, currentUser } from "./state.ts"
 
 test.describe.configure({ mode: "serial" })
 
-const COUNT = 25
+// The panel loads 20 links per page (PAGE_SIZE in src/api/urls.ts); one more
+// is enough to need "Load more", and creating links is rate limited
+// (30 per minute per user).
+const PAGE_SIZE = 20
+const COUNT = PAGE_SIZE + 1
 
 const target = targetUrl
 
@@ -23,6 +28,7 @@ test.beforeAll(async ({ playwright }) => {
 
 test(`create ${COUNT} links; Load more shows all of them once`, async ({ page, api, baseURL }) => {
   test.setTimeout(180_000)
+  const { email } = currentUser()
   await loginWithToken(page, api)
   await expect(page.getByRole("button", { name: "Create your first link" })).toBeVisible()
 
@@ -31,13 +37,14 @@ test(`create ${COUNT} links; Load more shows all of them once`, async ({ page, a
     const dialog = page.getByRole("dialog")
     await dialog.getByLabel("Target URL").fill(target(baseURL!, i))
     const created = page.waitForResponse((r) => r.url().endsWith("/urls") && r.request().method() === "POST")
+    await acquire("create", email)
     await dialog.getByRole("button", { name: "Create" }).click()
     expect((await created).status()).toBe(201)
     await expect(dialog).toBeHidden()
   }
 
   await page.reload()
-  await expect(rows(page)).toHaveCount(20)
+  await expect(rows(page)).toHaveCount(PAGE_SIZE)
   await page.getByRole("button", { name: "Load more" }).click()
   await expect(rows(page)).toHaveCount(COUNT)
   await expect(page.getByRole("button", { name: "Load more" })).toHaveCount(0)

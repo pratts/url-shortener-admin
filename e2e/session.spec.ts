@@ -1,5 +1,5 @@
 import { expect, loginWithForm, loginWithToken, targetUrl, test } from "./fixtures.ts"
-import { currentUser } from "./state.ts"
+import { acquire, currentUser } from "./state.ts"
 
 test("clearing sessionStorage mid-session sends the next action to /login and back", async ({ page, api, guard, baseURL }) => {
   const user = currentUser()
@@ -12,6 +12,7 @@ test("clearing sessionStorage mid-session sends the next action to /login and ba
   await page.evaluate(() => sessionStorage.clear())
   guard.allow(401, /\/api\/v1\/urls$/)
   const rejected = page.waitForResponse((r) => r.url().endsWith("/urls") && r.request().method() === "POST")
+  await acquire("create", user.email) // rejected with 401, but counted as an attempt to be safe
   await dialog.getByRole("button", { name: "Create" }).click()
   expect((await rejected).status()).toBe(401)
 

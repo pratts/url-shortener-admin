@@ -85,15 +85,17 @@ responses it doesn't expect. Environment variables:
 | `E2E_API_URL` | `http://localhost:8086/api/v1` | Admin API, for setup and checks |
 | `E2E_NEW_USER` | unset | `1` registers a new user even if one exists |
 
-**Rate limits.** The API allows **5 registrations per hour per IP, and every
-attempt counts** (201, 400 and 409 alike), plus 20 login attempts per 15
-minutes per IP. The suite registers a user (`e2e-<timestamp>@example.com`)
-only when it has none, reuses it afterwards, reuses its API token until it
-nears expiry, and records every register and login attempt in
-`e2e/.state/state.json` (gitignored). Tests that would exceed a limit are
-skipped rather than sent, and the run stops at the first 429. Requests you make
-yourself from the same IP count too, and the state file doesn't know about
-them.
+**Rate limits.** Every attempt counts against the API's limits, whatever its
+status: **5 registrations per hour per IP** (201, 400 and 409 alike), 20 logins
+per 15 minutes per IP (and 5 failed ones per email), and **30 link creations
+per minute per user**. The suite records every such request in
+`e2e/.state/state.json` (gitignored), keeps one attempt of each budget spare,
+and **waits for the window to pass** instead of sending a request that would
+exceed a limit; if a 429 still happens, the run stops. It registers a user
+only when it has none (or with `E2E_NEW_USER=1`), reuses it and its API token
+afterwards, and creates just one link more than a page (21) for "Load more".
+Requests you make yourself from the same IP count too, and the state file
+doesn't know about them.
 
 Test users and their links stay in the database; delete them with
 `DELETE FROM users WHERE email LIKE 'e2e-%@example.com';` (links and clicks

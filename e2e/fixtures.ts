@@ -1,6 +1,6 @@
 import { test as base, expect, type APIRequestContext, type Page } from "@playwright/test"
 import { API_URL, PROD } from "./env.ts"
-import { currentUser, saveUser, spendAttempt, type E2EUser } from "./state.ts"
+import { acquire, currentUser, recordAttempt, releaseLast, saveUser, type E2EUser } from "./state.ts"
 
 type Expected = { status: number; url: string | RegExp }
 
@@ -53,11 +53,14 @@ export const test = base.extend<{ guard: Guard; api: Api }>({
             // Downloads of blob:/data: URLs end as aborted navigations.
             if (/^(blob|data):/.test(request.url())) return
             // A cancelled read, not a failure: TanStack Query aborts a query's
-            // fetch when its component unmounts (in development, React
+            // fetch when its component unmounts (in development React
             // StrictMode mounts twice, so the first fetch is always cancelled).
-            // CORS and network failures are net::ERR_FAILED and still count,
-            // as does any aborted write.
-            if (request.method() === "GET") return
+            // Only API reads made with fetch qualify; aborted writes,
+            // navigations and assets still count, and CORS and network
+            // failures are net::ERR_FAILED.
+            if (request.method() === "GET" && request.resourceType() === "fetch" && request.url().startsWith(API_URL)) {
+              return
+            }
           }
           problems.push(`request failed: ${request.method()} ${request.url()} (${failure})`)
         })
@@ -110,10 +113,11 @@ export class Api {
     if (user.token && user.tokenExpiresAt && user.tokenExpiresAt - Date.now() > 10 * 60_000) {
       return user.token
     }
-    spendAttempt("login")
+    await acquire("login")
     const response = await this.request.post(`${API_URL}/users/login`, {
       data: { email: user.email, password: user.password },
     })
+    if (response.status() === 401) recordAttempt("loginFailed", user.email)
     expect(response.status(), `API login for ${user.email}`).toBe(200)
     const { token } = (await response.json()) as { token: string }
     const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString()) as { exp: number }
@@ -178,10 +182,16 @@ export async function loginWithToken(page: Page, api: Api, path = "/urls") {
   await page.goto(path)
 }
 
-/** Log in through the form. */
+/** Log in through the form, within the login budgets; returns the response status. */
 export async function loginWithForm(page: Page, email: string, password: string) {
   await page.getByLabel("Email").fill(email)
   await page.getByLabel("Password").fill(password)
-  spendAttempt("login")
+  await acquire("login")
+  await acquire("loginFailed", email) // only failures count, but a login may fail
+  const response = page.waitForResponse((r) => r.url().endsWith("/users/login"))
   await page.getByRole("button", { name: "Log in" }).click()
+  const status = (await response).status()
+  // The per-email budget counts failures only: drop the reservation on success.
+  if (status !== 401) releaseLast("loginFailed", email)
+  return status
 }

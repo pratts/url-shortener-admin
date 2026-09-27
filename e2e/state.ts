@@ -1,9 +1,13 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
+import { test } from "@playwright/test"
 
-// Users created by the suite and the rate-limited requests it made, kept
-// between runs (gitignored) so repeated runs reuse users and stay inside the
-// API's rate limits instead of hitting a 429.
+// Users created by the suite, and every rate-limited request it made, kept
+// between runs (gitignored). The suite reuses its users and never sends a
+// request that would exceed one of the API's rate limits: it waits for the
+// window to pass instead. Requests from anything else on this machine (manual
+// testing, scripts) count against the same limits but aren't recorded here:
+// add them to e2e/.state/state.json by hand, or wait for the window to pass.
 
 export type E2EUser = {
   email: string
@@ -15,27 +19,36 @@ export type E2EUser = {
 
 type State = {
   users: E2EUser[]
-  attempts: { register: number[]; login: number[] }
+  /** Timestamps (ms) of attempts, per budget key, e.g. "register" or "create:<email>". */
+  attempts: Record<string, number[]>
 }
 
 const FILE = path.join(import.meta.dirname, ".state", "state.json")
 
-// docs/API.md, "Rate limits" (per IP), minus one spare attempt each: other
-// requests from this IP (a manual signup, a script) count against the same
-// limit, and a 429 would stop the run.
-export const LIMITS = {
+// docs/API.md, "Rate limits". Every attempt counts, whatever its status.
+// Each budget keeps one attempt spare, as a margin for requests made outside
+// the suite.
+const BUDGETS = {
+  /** POST /users/register: 5 per hour per IP. */
   register: { max: 5 - 1, windowMs: 60 * 60_000 },
+  /** POST /users/login: 20 per 15 minutes per IP. */
   login: { max: 20 - 1, windowMs: 15 * 60_000 },
+  /** POST /users/login: 5 failed attempts per 15 minutes per email. */
+  loginFailed: { max: 5 - 1, windowMs: 15 * 60_000 },
+  /** POST /urls: 30 per minute per user. */
+  create: { max: 30 - 1, windowMs: 60_000 },
 } as const
 
-/** The suite creates at most this many users in total. */
-export const MAX_USERS = 2
+export type Budget = keyof typeof BUDGETS
+
+const key = (budget: Budget, scope?: string) => (scope ? `${budget}:${scope}` : budget)
 
 export function readState(): State {
   try {
-    return JSON.parse(readFileSync(FILE, "utf8")) as State
+    const state = JSON.parse(readFileSync(FILE, "utf8")) as State
+    return { users: state.users ?? [], attempts: state.attempts ?? {} }
   } catch {
-    return { users: [], attempts: { register: [], login: [] } }
+    return { users: [], attempts: {} }
   }
 }
 
@@ -50,24 +63,55 @@ export function updateState(change: (state: State) => void) {
   writeState(state)
 }
 
-export function attemptsLeft(kind: keyof typeof LIMITS, now = Date.now()) {
-  const { max, windowMs } = LIMITS[kind]
-  return max - readState().attempts[kind].filter((t) => now - t < windowMs).length
+function recent(budget: Budget, scope: string | undefined, now: number) {
+  const { windowMs } = BUDGETS[budget]
+  return (readState().attempts[key(budget, scope)] ?? []).filter((t) => now - t < windowMs)
 }
 
-/** Records an attempt, or throws before making one that would exceed the limit. */
-export function spendAttempt(kind: keyof typeof LIMITS) {
-  if (attemptsLeft(kind) < 1) {
-    const { windowMs } = LIMITS[kind]
-    const oldest = Math.min(...readState().attempts[kind].filter((t) => Date.now() - t < windowMs))
-    throw new Error(
-      `No ${kind} attempts left in the rate-limit window; try again after ${new Date(oldest + windowMs).toISOString()}.`
-    )
-  }
+export function attemptsLeft(budget: Budget, scope?: string, now = Date.now()) {
+  return BUDGETS[budget].max - recent(budget, scope, now).length
+}
+
+/** Record an attempt that has already been made (e.g. a failed login). */
+export function recordAttempt(budget: Budget, scope?: string) {
+  const now = Date.now()
   updateState((state) => {
-    const { windowMs } = LIMITS[kind]
-    state.attempts[kind] = [...state.attempts[kind].filter((t) => Date.now() - t < windowMs), Date.now()]
+    state.attempts[key(budget, scope)] = [...recent(budget, scope, now), now]
   })
+}
+
+/** Undo the most recent reservation (for budgets that only count failures). */
+export function releaseLast(budget: Budget, scope?: string) {
+  updateState((state) => {
+    state.attempts[key(budget, scope)] = (state.attempts[key(budget, scope)] ?? []).slice(0, -1)
+  })
+}
+
+/**
+ * Wait until the budget allows one more request, then record it. Call right
+ * before sending the request. Inside a test, the test's timeout is extended by
+ * the time spent waiting.
+ */
+export async function acquire(budget: Budget, scope?: string) {
+  for (;;) {
+    const now = Date.now()
+    const inWindow = recent(budget, scope, now)
+    if (inWindow.length < BUDGETS[budget].max) {
+      recordAttempt(budget, scope)
+      return
+    }
+    const waitMs = Math.min(...inWindow) + BUDGETS[budget].windowMs - now + 1_000
+    console.log(
+      `[rate limit] ${key(budget, scope)}: budget used; waiting ${Math.ceil(waitMs / 1000)}s for the window`
+    )
+    try {
+      const info = test.info()
+      info.setTimeout(info.timeout + waitMs)
+    } catch {
+      // Not inside a test (e.g. global setup); nothing to extend.
+    }
+    await new Promise((resolve) => setTimeout(resolve, waitMs))
+  }
 }
 
 export function currentUser(): E2EUser {

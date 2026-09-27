@@ -268,13 +268,16 @@ backend); run it locally before merging changes to API calls, auth, or the CSP.
 Every test fails on console errors, CORS errors, failed requests and 4xx/5xx
 responses it doesn't declare with `guard.allow(status, url)`.
 
-**Rate limits.** The API allows **5 registrations per hour per IP, and every
-attempt counts**: 201, 400 and 409 alike, including requests from scripts or
-manual testing. Logins allow 20 attempts per 15 minutes per IP. The suite
-records every register and login attempt in `e2e/.state/state.json`
-(gitignored), keeps one attempt spare, skips tests that would exceed a limit,
-and stops at the first 429. It registers a user only if it has none (or with
-`E2E_NEW_USER=1`) and reuses it and its token afterwards. Never clear Redis to
+**Rate limits.** Every attempt counts, whatever its status, including requests
+from scripts or manual testing: **5 registrations per hour per IP** (201, 400
+and 409 alike), 20 logins per 15 minutes per IP plus 5 failed per email, and
+**30 link creations per minute per user**. The suite records every such
+request in `e2e/.state/state.json` (gitignored), keeps one attempt of each
+budget spare, waits for the window instead of exceeding a budget, and stops at
+the first 429. It registers a user only if it has none (or with
+`E2E_NEW_USER=1`), reuses it and its token afterwards, and creates only
+page size + 1 links. If you send limited requests outside the suite, add them
+to the state file or wait them out. Never clear Redis to
 get around a limit; wait for the window to pass. Delete test users afterwards
 with `DELETE FROM users WHERE email LIKE 'e2e-%@example.com';` (links and
 clicks cascade).
