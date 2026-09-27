@@ -6,7 +6,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  globalIgnores(["dist", "src/types/api.ts"]),
+  globalIgnores(["dist", "src/types/api.ts", "playwright-report", "test-results"]),
   {
     files: ["**/*.{ts,tsx}"],
     extends: [
@@ -28,6 +28,13 @@ export default defineConfig([
         },
       ],
     },
+  },
+  {
+    // Playwright runs in Node; its fixtures call a function named `use`,
+    // which the React hooks rules would mistake for React's use().
+    files: ["e2e/**/*.ts", "playwright.config.ts"],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+    rules: { "react-hooks/rules-of-hooks": "off" },
   },
   {
     // shadcn components export variants and hooks alongside components.

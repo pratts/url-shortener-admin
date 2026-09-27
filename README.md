@@ -49,7 +49,55 @@ production.
 | `npm run lint` | ESLint |
 | `npm run typecheck` | TypeScript, no output |
 | `npm test` | Vitest (once); `npm run test:watch` to watch |
+| `npm run e2e` | Playwright against the dev server and a live backend (not in CI) |
+| `npm run e2e:prod` | Playwright against the production build with the CSP (not in CI) |
 | `npm run gen:api` | Regenerate `src/types/api.ts` from `docs/openapi.json` |
+
+## End-to-end tests
+
+Playwright tests in [`e2e/`](e2e/) drive a real browser against the real
+backend: no mocks. They are **not part of CI**, because they need a running
+backend; run them locally before merging anything that touches the API or the
+CSP.
+
+Start the backend (admin API on `:8086`, redirect service on `:8085`) with the
+panel's origins in its `CORS_ORIGINS`, e.g.
+`CORS_ORIGINS=http://localhost:5173,http://localhost:4173`. Then:
+
+```bash
+npx playwright install chromium   # once
+
+# Against the dev server (start it first with npm run dev)
+npm run e2e
+
+# Against the production build: builds with the local API URL, serves dist/ on
+# :4173 with the headers from vercel.json (connect-src pointed at the local
+# API), and fails on any Content-Security-Policy violation
+npm run e2e:prod
+```
+
+Every test fails on console errors, CORS errors, failed requests, and 4xx/5xx
+responses it doesn't expect. Environment variables:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `E2E_BASE_URL` | `http://localhost:5173` | App under test for `npm run e2e` |
+| `E2E_API_URL` | `http://localhost:8086/api/v1` | Admin API, for setup and checks |
+| `E2E_NEW_USER` | unset | `1` registers a new user even if one exists |
+
+**Rate limits.** The API allows **5 registrations per hour per IP, and every
+attempt counts** (201, 400 and 409 alike), plus 20 login attempts per 15
+minutes per IP. The suite registers a user (`e2e-<timestamp>@example.com`)
+only when it has none, reuses it afterwards, reuses its API token until it
+nears expiry, and records every register and login attempt in
+`e2e/.state/state.json` (gitignored). Tests that would exceed a limit are
+skipped rather than sent, and the run stops at the first 429. Requests you make
+yourself from the same IP count too, and the state file doesn't know about
+them.
+
+Test users and their links stay in the database; delete them with
+`DELETE FROM users WHERE email LIKE 'e2e-%@example.com';` (links and clicks
+cascade).
 
 ## Project layout
 
