@@ -147,11 +147,21 @@ describe("target URL rules", () => {
     expect(targetUrlProblem(base + "a".repeat(2049 - base.length), hosts)).not.toBeNull()
   })
 
-  it("rejects the short-link host, case-insensitively and with a port", () => {
+  it("rejects the short-link hostname case-insensitively, on any port (like the backend)", () => {
     expect(targetUrlProblem("https://TidyLnk.com/abc", hosts)).toBe("URL can't point to a short link")
+    expect(targetUrlProblem("https://tidylnk.com:8443/abc", hosts)).not.toBeNull()
     expect(targetUrlProblem("http://localhost:8085/abc", hosts)).not.toBeNull()
-    expect(targetUrlProblem("http://localhost:3000/abc", hosts)).toBeNull()
+    // The backend rejects these too: it compares hostnames, not ports.
+    expect(targetUrlProblem("http://localhost:3000/abc", hosts)).not.toBeNull()
+    expect(targetUrlProblem("http://localhost/abc", hosts)).not.toBeNull()
+    expect(targetUrlProblem("http://127.0.0.1:3000/abc", hosts)).toBeNull()
     expect(targetUrlProblem("https://sub.tidylnk.com/abc", hosts)).toBeNull()
+  })
+
+  it("accepts short-link hosts given as URLs or host:port", () => {
+    expect(targetUrlProblem("https://tidylnk.com/x", ["https://tidylnk.com/abc1234"])).not.toBeNull()
+    expect(targetUrlProblem("http://[::1]:4173/x", ["[::1]:8085"])).not.toBeNull()
+    expect(targetUrlProblem("https://example.com/x", ["", "not a host"])).toBeNull()
   })
 
   it("trims the value in the form schema", () => {

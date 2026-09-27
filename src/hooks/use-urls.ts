@@ -14,7 +14,7 @@ import {
   type ShortLink,
   type ShortLinkPage,
 } from "@/api/urls"
-import { hostOf } from "@/lib/validation"
+import { hostnameOf } from "@/lib/validation"
 
 export const urlsQueryKey = ["urls"] as const
 
@@ -66,11 +66,11 @@ export function useDeleteUrl() {
 export function useShortLinkHosts(links: readonly ShortLink[]) {
   return useMemo(() => {
     const hosts = new Set<string>()
-    const configured = import.meta.env.VITE_SHORT_URL_HOST?.trim().toLowerCase()
+    const configured = hostnameOf(import.meta.env.VITE_SHORT_URL_HOST ?? "")
     if (configured) hosts.add(configured)
     for (const link of links) {
-      const host = hostOf(link.short_url)
-      if (host) hosts.add(host)
+      const hostname = hostnameOf(link.short_url)
+      if (hostname) hosts.add(hostname)
     }
     return [...hosts]
   }, [links])

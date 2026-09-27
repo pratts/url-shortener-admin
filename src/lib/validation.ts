@@ -81,20 +81,22 @@ export const passwordChangeSchema = z
     message: "Passwords do not match",
   })
 
-function normalizeHost(host: string): string {
-  return host.trim().toLowerCase().replace(/\.$/, "")
-}
-
-/** The short-link host from a short_url, or null if it isn't a valid URL. */
-export function hostOf(url: string): string | null {
+/** The lowercase hostname (no port) of a URL or of a "host[:port]" value, or null. */
+export function hostnameOf(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
   try {
-    return normalizeHost(new URL(url).host)
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`)
+    return url.hostname.toLowerCase().replace(/\.$/, "") || null
   } catch {
     return null
   }
 }
 
-/** Why `value` isn't an acceptable target URL, or null if it is. */
+/**
+ * Why `value` isn't an acceptable target URL, or null if it is.
+ * `shortLinkHosts` are hosts ("tidylnk.com", "localhost:8085") or URLs.
+ */
 export function targetUrlProblem(value: string, shortLinkHosts: readonly string[]): string | null {
   const trimmed = value.trim()
   if (!trimmed) return "URL is required"
@@ -112,10 +114,10 @@ export function targetUrlProblem(value: string, shortLinkHosts: readonly string[
   if (!url.hostname) return "URL must include a host"
   if (url.username || url.password) return "URL must not contain a username or password"
 
-  const hosts = shortLinkHosts.map(normalizeHost).filter(Boolean)
-  const host = normalizeHost(url.host)
-  const hostname = normalizeHost(url.hostname)
-  if (hosts.some((h) => h === host || h === hostname)) {
+  // Like the backend, compare hostnames and ignore ports: with short links on
+  // localhost:8085, every localhost target is rejected.
+  const hostname = hostnameOf(url.href)
+  if (shortLinkHosts.some((h) => hostnameOf(h) === hostname)) {
     return "URL can't point to a short link"
   }
   return null
