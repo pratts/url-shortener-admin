@@ -1,5 +1,10 @@
 import { z } from "zod"
 
+// zod v4 checks whether it may compile validators by calling Function(""),
+// i.e. eval. The CSP (script-src 'self') blocks that and reports a violation;
+// jitless mode never calls Function(), so the CSP needs no 'unsafe-eval'.
+z.config({ jitless: true })
+
 // Mirrors the backend's rules (docs/API.md) so users see problems before
 // submitting. Server `fields` errors are still mapped onto inputs.
 
