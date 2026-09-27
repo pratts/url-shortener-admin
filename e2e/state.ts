@@ -25,7 +25,17 @@ type State = {
 
 const FILE = path.join(import.meta.dirname, ".state", "state.json")
 
-// docs/API.md, "Rate limits". Every attempt counts, whatever its status.
+// docs/API.md, "Rate limits". Every attempt counts, whatever its status,
+// including requests the limiter rejects.
+//
+// The backend uses a sliding-window approximation (Fiber's SlidingWindow): it
+// counts hits in fixed buckets of one window, and adds the previous bucket's
+// hits weighted by how much of the current bucket is left. A burst therefore
+// keeps counting well into the next window, so "at most max in the last
+// window" is not enough. Counting over two windows is: then the previous and
+// current buckets together never hold more than max, wherever they start.
+const WINDOWS_COUNTED = 2
+
 // Each budget keeps one attempt spare, as a margin for requests made outside
 // the suite.
 const BUDGETS = {
@@ -64,8 +74,8 @@ export function updateState(change: (state: State) => void) {
 }
 
 function recent(budget: Budget, scope: string | undefined, now: number) {
-  const { windowMs } = BUDGETS[budget]
-  return (readState().attempts[key(budget, scope)] ?? []).filter((t) => now - t < windowMs)
+  const span = BUDGETS[budget].windowMs * WINDOWS_COUNTED
+  return (readState().attempts[key(budget, scope)] ?? []).filter((t) => now - t < span)
 }
 
 export function attemptsLeft(budget: Budget, scope?: string, now = Date.now()) {
@@ -100,7 +110,7 @@ export async function acquire(budget: Budget, scope?: string) {
       recordAttempt(budget, scope)
       return
     }
-    const waitMs = Math.min(...inWindow) + BUDGETS[budget].windowMs - now + 1_000
+    const waitMs = Math.min(...inWindow) + BUDGETS[budget].windowMs * WINDOWS_COUNTED - now + 1_000
     console.log(
       `[rate limit] ${key(budget, scope)}: budget used; waiting ${Math.ceil(waitMs / 1000)}s for the window`
     )
