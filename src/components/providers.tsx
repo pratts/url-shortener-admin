@@ -1,7 +1,6 @@
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
-import { TooltipProvider } from "@/components/ui/tooltip"
 
 export function Providers({
   queryClient,
@@ -13,10 +12,8 @@ export function Providers({
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <TooltipProvider>
-          {children}
-          <Toaster richColors closeButton />
-        </TooltipProvider>
+        {children}
+        <Toaster richColors closeButton />
       </ThemeProvider>
     </QueryClientProvider>
   )
