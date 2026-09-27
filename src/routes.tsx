@@ -4,9 +4,7 @@ import { getToken } from "@/lib/auth"
 import { safeNextPath } from "@/lib/session"
 import Login from "@/pages/Login"
 import NotFound from "@/pages/NotFound"
-import Profile from "@/pages/Profile"
 import Register from "@/pages/Register"
-import Urls from "@/pages/Urls"
 
 /** Private pages: without a (non-expired) token, go to /login and come back after. */
 function requireAuth({ request }: LoaderFunctionArgs) {
@@ -28,8 +26,12 @@ export const routes: RouteObject[] = [
     loader: requireAuth,
     element: <AppLayout />,
     children: [
-      { path: "/urls", element: <Urls /> },
-      { path: "/profile", element: <Profile /> },
+      // Loaded on demand so the login page doesn't download the whole app.
+      { path: "/urls", lazy: () => import("@/pages/Urls").then((m) => ({ Component: m.default })) },
+      {
+        path: "/profile",
+        lazy: () => import("@/pages/Profile").then((m) => ({ Component: m.default })),
+      },
     ],
   },
   { path: "*", element: <NotFound /> },
