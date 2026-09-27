@@ -106,7 +106,13 @@ export async function request<T>(
   }
 
   if (response.ok) {
-    if (response.status === 204) return undefined as T
+    if (response.status === 204) {
+      // Nothing to parse, but read the empty body to the end: Chrome reports a
+      // response whose body is never read as a cancelled request
+      // (net::ERR_ABORTED), even though it succeeded.
+      await response.text()
+      return undefined as T
+    }
     return (await response.json()) as T
   }
 

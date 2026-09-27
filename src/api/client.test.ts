@@ -95,6 +95,20 @@ describe("request", () => {
     expect(new URL(url).search).toBe("?limit=20")
   })
 
+  it("reads a 204's empty body to the end instead of leaving it unread", async () => {
+    const response = new Response(null, { status: 204 })
+    const text = vi.spyOn(response, "text")
+    const json = vi.spyOn(response, "json")
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(response)
+    try {
+      await expect(request("DELETE", "/urls/1")).resolves.toBeUndefined()
+    } finally {
+      fetchSpy.mockRestore()
+    }
+    expect(text).toHaveBeenCalledOnce()
+    expect(json).not.toHaveBeenCalled()
+  })
+
   it("returns undefined for 204 without parsing", async () => {
     server.use(http.delete(`${API}/urls/1`, () => new HttpResponse(null, { status: 204 })))
     await expect(request("DELETE", "/urls/1")).resolves.toBeUndefined()
