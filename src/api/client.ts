@@ -57,8 +57,8 @@ export function parseApiError(status: number, body: unknown): ApiError {
 let unauthorizedHandler: (() => void) | undefined
 
 /**
- * Called when an authenticated request gets a 401: the token expired, was
- * revoked, or is gone from storage (then the request went out without one).
+ * Called when an authenticated request gets a 401 (the token expired or was
+ * revoked), or can't be sent because there is no token.
  */
 export function setUnauthorizedHandler(handler: (() => void) | undefined) {
   unauthorizedHandler = handler
@@ -79,6 +79,13 @@ export async function request<T>(
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" }
   const token = auth ? getToken() : null
+  if (auth && !token) {
+    // No token (logged out, expired, or cleared from storage): the API would
+    // answer 401, so don't send it; end the session the same way. This also
+    // stops refetches that fire while the session is ending.
+    unauthorizedHandler?.()
+    throw new ApiError(401, "Your session has ended. Please log in again.")
+  }
   if (token) headers.Authorization = `Bearer ${token}`
   if (body !== undefined) headers["Content-Type"] = "application/json"
 

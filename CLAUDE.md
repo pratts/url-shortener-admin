@@ -140,9 +140,11 @@ the user's name/email.
   `ApiError { status: number; message: string; fields?: Record<string, string> }`,
   from the body `{ error, fields? }` (see `docs/API.md`, "Errors").
 - 204 responses have no body; don't parse them.
-- **401 on any authenticated request** (everything except login and register,
-  even if no token was left to send): clear the token, clear the query cache,
-  redirect to `/login?next=<current path>`. On `POST /users/login`, a 401 is just
+- **401 on any authenticated request** (everything except login and register):
+  clear the token, clear the query cache, redirect to `/login?next=<current path>`.
+  An authenticated request with **no token** (logged out, expired, or cleared
+  from storage) isn't sent at all; it ends the session the same way. That also
+  stops refetches that fire while a session is ending. On `POST /users/login`, a 401 is just
   "Invalid email or password".
 - 429: show "Too many attempts, try again later". Response headers such as
   `Retry-After` aren't readable cross-origin, so don't depend on them.

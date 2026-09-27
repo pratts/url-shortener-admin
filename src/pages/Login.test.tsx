@@ -131,10 +131,22 @@ describe("session", () => {
     const { user, location } = renderApp("/urls")
     await user.click(await screen.findByRole("button", { name: "Create your first link" }))
     sessionStorage.clear()
-    await user.type(await screen.findByLabelText("Target URL"), "https://example.com/x")
-    await user.click(screen.getByRole("button", { name: "Create" }))
 
-    await waitFor(() => expect(location()).toBe("/login?next=%2Furls"))
+    const unauthenticated: string[] = []
+    const track = ({ request }: { request: Request }) => {
+      if (!request.headers.get("authorization")) unauthenticated.push(`${request.method} ${request.url}`)
+    }
+    server.events.on("request:start", track)
+    try {
+      await user.type(await screen.findByLabelText("Target URL"), "https://example.com/x")
+      await user.click(screen.getByRole("button", { name: "Create" }))
+      await waitFor(() => expect(location()).toBe("/login?next=%2Furls"))
+      // Neither the create nor the list refetch that follows it goes out without a token.
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(unauthenticated).toEqual([])
+    } finally {
+      server.events.removeListener("request:start", track)
+    }
   })
 
   it("redirects to /login when there is no token", async () => {

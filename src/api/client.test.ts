@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw"
-import { describe, expect, it, vi } from "vitest"
-import { setToken } from "@/lib/auth"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { clearToken, setToken } from "@/lib/auth"
 import { API, server } from "@/test/server"
 import { makeToken } from "@/test/jwt"
 import {
@@ -49,7 +49,10 @@ describe("parseApiError", () => {
 })
 
 describe("request", () => {
-  it("sends Authorization only with a token and Content-Type only with a body", async () => {
+  // Authenticated requests need a token (without one they aren't sent).
+  beforeEach(() => setToken(makeToken()))
+
+  it("sends Authorization only on authenticated requests and Content-Type only with a body", async () => {
     const seen: Headers[] = []
     server.use(
       http.all(`${API}/*`, ({ request }) => {
@@ -58,8 +61,7 @@ describe("request", () => {
       })
     )
 
-    await request("GET", "/urls")
-    setToken(makeToken())
+    await request("GET", "/urls", { auth: false })
     await request("GET", "/urls")
     await request("POST", "/urls", { body: { url: "https://example.com" } })
 
@@ -154,9 +156,31 @@ describe("request", () => {
     await expect(request("GET", "/users/me")).rejects.toMatchObject({ status: 401 })
     expect(handler).toHaveBeenCalledTimes(1)
 
-    // The token vanished from storage mid-session: the request goes out without one.
-    sessionStorage.clear()
+    setUnauthorizedHandler(undefined)
+  })
+
+  it("doesn't send an authenticated request without a token, and ends the session instead", async () => {
+    clearToken() // e.g. the token vanished from storage mid-session
+    const handler = vi.fn()
+    setUnauthorizedHandler(handler)
+    const sent: string[] = []
+    server.use(
+      http.all(`${API}/*`, ({ request }) => {
+        sent.push(`${request.method} ${new URL(request.url).pathname}`)
+        return HttpResponse.json({ error: "Authorization header is missing" }, { status: 401 })
+      })
+    )
+
     await expect(request("GET", "/users/me")).rejects.toMatchObject({ status: 401 })
+    await expect(request("POST", "/urls", { body: { url: "https://example.com" } })).rejects.toMatchObject({
+      status: 401,
+    })
+    expect(sent).toEqual([])
+    expect(handler).toHaveBeenCalledTimes(2)
+
+    // Login and register don't need a token and are still sent.
+    await expect(request("POST", "/users/login", { body: {}, auth: false })).rejects.toMatchObject({ status: 401 })
+    expect(sent).toEqual(["POST /api/v1/users/login"])
     expect(handler).toHaveBeenCalledTimes(2)
     setUnauthorizedHandler(undefined)
   })
