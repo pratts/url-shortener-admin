@@ -88,6 +88,20 @@ blocked request gets `429 {"error": "Too many requests, please try again later"}
 | `POST /users/register` | 5 per hour per IP (every attempt counts, including invalid ones). |
 | `POST /urls` | 30 per minute per user (every attempt counts). |
 
+**How the window works.** The limits use a sliding-window approximation (Fiber's
+`SlidingWindow`), not a strict "N in the last window": hits are counted in fixed
+buckets one window long, and a request is rejected when the current bucket's
+hits plus the previous bucket's hits, weighted by the fraction of the current
+bucket still to come, exceed the limit. A burst therefore keeps counting, with
+decreasing weight, through most of the next window: after 30 link creations in
+one minute, far fewer than 30 are allowed in the minute after. **Blocked
+requests count too**: a 429 is itself a hit, so retrying straight away extends
+the block. Clients should back off rather than retry in a loop.
+
+**Turning limits off.** The backend's `RATE_LIMITS=off` disables all limits for
+local development and tests (the e2e suite's `E2E_RATE_LIMITS=off` mode expects
+it), and is refused in production.
+
 ## Users
 
 ### POST /users/register
