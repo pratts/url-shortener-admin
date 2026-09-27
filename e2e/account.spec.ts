@@ -1,14 +1,16 @@
 import { expect, loginWithForm, loginWithToken, test } from "./fixtures.ts"
+import { RATE_LIMITS } from "./env.ts"
 import { acquire, currentUser, readState, updateState } from "./state.ts"
 
 test.describe.configure({ mode: "serial" })
 
 test("register lands logged in", async ({ page }) => {
   const { users } = readState()
-  // Registrations are scarce (5 per hour per IP, every attempt counts), so once
-  // a user exists a new one is only made on request.
+  // With rate limits on, registrations are scarce (5 per hour per IP, every
+  // attempt counts), so once a user exists a new one is only made on request.
+  // With them off, every run registers a fresh user.
   test.skip(
-    users.length > 0 && process.env.E2E_NEW_USER !== "1",
+    RATE_LIMITS && users.length > 0 && process.env.E2E_NEW_USER !== "1",
     `Reusing ${users.at(-1)?.email}; set E2E_NEW_USER=1 to register another.`
   )
 

@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { test } from "@playwright/test"
+import { RATE_LIMITS } from "./env.ts"
 
 // Users created by the suite, and every rate-limited request it made, kept
 // between runs (gitignored). The suite reuses its users and never sends a
@@ -84,6 +85,7 @@ export function attemptsLeft(budget: Budget, scope?: string, now = Date.now()) {
 
 /** Record an attempt that has already been made (e.g. a failed login). */
 export function recordAttempt(budget: Budget, scope?: string) {
+  if (!RATE_LIMITS) return
   const now = Date.now()
   updateState((state) => {
     state.attempts[key(budget, scope)] = [...recent(budget, scope, now), now]
@@ -92,6 +94,7 @@ export function recordAttempt(budget: Budget, scope?: string) {
 
 /** Undo the most recent reservation (for budgets that only count failures). */
 export function releaseLast(budget: Budget, scope?: string) {
+  if (!RATE_LIMITS) return
   updateState((state) => {
     state.attempts[key(budget, scope)] = (state.attempts[key(budget, scope)] ?? []).slice(0, -1)
   })
@@ -100,9 +103,10 @@ export function releaseLast(budget: Budget, scope?: string) {
 /**
  * Wait until the budget allows one more request, then record it. Call right
  * before sending the request. Inside a test, the test's timeout is extended by
- * the time spent waiting.
+ * the time spent waiting. Does nothing with E2E_RATE_LIMITS=off.
  */
 export async function acquire(budget: Budget, scope?: string) {
+  if (!RATE_LIMITS) return // E2E_RATE_LIMITS=off: the backend enforces no limits
   for (;;) {
     const now = Date.now()
     const inWindow = recent(budget, scope, now)

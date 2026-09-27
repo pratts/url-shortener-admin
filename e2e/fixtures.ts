@@ -1,5 +1,5 @@
 import { test as base, expect, type APIRequestContext, type Page } from "@playwright/test"
-import { API_URL, PROD } from "./env.ts"
+import { API_URL, PROD, RATE_LIMITED_MESSAGE } from "./env.ts"
 import { acquire, currentUser, recordAttempt, releaseLast, saveUser, type E2EUser } from "./state.ts"
 
 type Expected = { status: number; url: string | RegExp }
@@ -67,7 +67,7 @@ export const test = base.extend<{ guard: Guard; api: Api }>({
         page.on("response", (response) => {
           const status = response.status()
           if (status === 429) {
-            problems.push(`RATE LIMITED (429): ${response.url()}; stop and wait for the window to pass`)
+            problems.push(`RATE LIMITED (429): ${response.url()}: ${RATE_LIMITED_MESSAGE}`)
           } else if (status >= 400 && !isExpected(status, response.url())) {
             problems.push(`unexpected ${status}: ${response.request().method()} ${response.url()}`)
           }

@@ -268,16 +268,25 @@ backend); run it locally before merging changes to API calls, auth, or the CSP.
 Every test fails on console errors, CORS errors, failed requests and 4xx/5xx
 responses it doesn't declare with `guard.allow(status, url)`.
 
-**Rate limits.** Every attempt counts, whatever its status, including requests
-from scripts or manual testing: **5 registrations per hour per IP** (201, 400
-and 409 alike), 20 logins per 15 minutes per IP plus 5 failed per email, and
-**30 link creations per minute per user**. The suite records every such
-request in `e2e/.state/state.json` (gitignored), keeps one attempt of each
-budget spare, waits for the window instead of exceeding a budget, and stops at
-the first 429. It registers a user only if it has none (or with
-`E2E_NEW_USER=1`), reuses it and its token afterwards, and creates only
-page size + 1 links. If you send limited requests outside the suite, add them
-to the state file or wait them out. Never clear Redis to
+**Rate limits: `E2E_RATE_LIMITS`.**
+- `off`: for a backend started with `RATE_LIMITS=off` (disables all limits for
+  local development and tests; refused in production). No budgeting or
+  waiting; every run registers a fresh user; any 429 is a hard failure telling
+  you the backend's limits are on. Prefer this locally:
+  `E2E_RATE_LIMITS=off npm run e2e` and `E2E_RATE_LIMITS=off npm run e2e:prod`.
+- `on` (default): for a backend that enforces its limits. Every attempt counts,
+  whatever its status and including blocked ones: **5 registrations per hour
+  per IP**, 20 logins per 15 minutes per IP plus 5 failed per email, **30 link
+  creations per minute per user**, all as sliding-window approximations (a
+  burst keeps counting into the next window; see `docs/API.md`). The suite
+  records every such request in `e2e/.state/state.json` (gitignored), counts
+  each budget over two windows with one attempt spare, waits instead of
+  exceeding a budget, and stops at the first 429. It registers a user only if
+  it has none (or with `E2E_NEW_USER=1`) and reuses it and its token. If you
+  send limited requests outside the suite, add them to the state file or wait
+  them out.
+
+Both modes create only page size + 1 links for "Load more". Never clear Redis to
 get around a limit; wait for the window to pass. Delete test users afterwards
 with `DELETE FROM users WHERE email LIKE 'e2e-%@example.com';` (links and
 clicks cascade).
